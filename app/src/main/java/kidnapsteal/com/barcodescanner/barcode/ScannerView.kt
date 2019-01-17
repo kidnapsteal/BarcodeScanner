@@ -6,6 +6,7 @@ import android.annotation.TargetApi
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.Camera
 import android.os.Build
 import android.util.Log
 import android.view.SurfaceHolder
@@ -34,6 +35,7 @@ class ScannerView {
     private var autoFocusEnabled = false
     private var facing = CameraSource.CAMERA_FACING_BACK
 
+    private lateinit var overlayView: View
     private lateinit var surfaceView: SurfaceView
     private var scannerSurfaceView: ScannerSurfaceView? = null
     private var surfaceCallback: SurfaceHolder.Callback? = null
@@ -76,6 +78,7 @@ class ScannerView {
     fun startScanner(scannerSurfaceView: ScannerSurfaceView) {
         this.scannerSurfaceView = scannerSurfaceView
         this.surfaceView = scannerSurfaceView.findViewById(R.id.surface_view)
+        this.overlayView = scannerSurfaceView.findViewById(R.id.overlay)
         this.scannerSurfaceView!!.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
             override fun onGlobalLayout() {
                 initSurfaceCallback()
@@ -99,20 +102,25 @@ class ScannerView {
     private fun initCameraSource() {
 
         if (!hasAutoFocus(context)) {
-            autoFocusEnabled = false
+          Log.e(TAG, "No Auto focus feature")
+          autoFocusEnabled = false
         }
         if (!hasCameraHardware(context)) {
-            scannerListener?.onError(NoCameraHardware)
+          Log.e(TAG, "No camera hardware")
+          scannerListener?.onError(NoCameraHardware)
             return
         }
 
         if (!checkCameraPermission(context)) {
-            scannerListener?.onError(PermissionDenied())
+          Log.e(TAG, "Camera permission denied")
+          scannerListener?.onError(PermissionDenied())
             return
         }
 
         if (barcodeDetector.isOperational) {
-            barcodeDetector.setProcessor(object : Detector.Processor<Barcode> {
+            val newDetector = AppBarcodeDetector(barcodeDetector, overlayView.width, overlayView.height)
+
+            newDetector.setProcessor(object : Detector.Processor<Barcode> {
                 override fun release() = Unit
 
                 override fun receiveDetections(detections: Detector.Detections<Barcode>) {
@@ -123,14 +131,13 @@ class ScannerView {
                 }
             })
 
-            cameraSource = CameraSource.Builder(context, barcodeDetector)
+            cameraSource = CameraSource.Builder(context, newDetector)
                     .setAutoFocusEnabled(autoFocusEnabled)
                     .setFacing(facing)
                     .setRequestedFps(15.0f)
                     .setRequestedPreviewSize(width, height)
                     .build()
 
-            //TODO should combine all view into ScannerSurfaceView-------
             if (scannerSurfaceView != null && surfaceCallback != null) {
                 if (surfaceCreated) {
                     startCameraView(context, cameraSource, surfaceView)
@@ -139,8 +146,8 @@ class ScannerView {
                 }
             }
         } else {
-            scannerListener?.onError(GeneralError)
-            Log.e(TAG, "Barcode recognition does not working")
+          Log.e(TAG, "Barcode recognition does not working")
+          scannerListener?.onError(GeneralError)
         }
 
     }
